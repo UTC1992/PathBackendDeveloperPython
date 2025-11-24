@@ -1,5 +1,7 @@
-import pyodbc
 import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
+from ShowConsolePagination import paginar_ansi
 
 # -----------------------------------------------------------
 # 1. CONFIGURACIÓN DE LA CONEXIÓN (AJUSTAR ESTOS VALORES)
@@ -10,17 +12,24 @@ DATABASE = 'siGESTHProd'
 USERNAME = 'vacaciones'
 PASSWORD = 'p88HmEwbfrX9iB7'
 
-CONNECTION_STRING = (
-    f'DRIVER={DRIVER};'
-    f'SERVER={SERVER};'
-    f'PORT=1433;'
-    f'DATABASE={DATABASE};'
-    f'UID={USERNAME};'
-    f'PWD={PASSWORD};'
-    f'Encrypt=no;'
-    f'TrustServerCertificate=no;'
-    f'Connection Timeout=30;'
+# Crear URL de conexión para SQLAlchemy
+connection_url = URL.create(
+    "mssql+pyodbc",
+    username=USERNAME,
+    password=PASSWORD,
+    host=SERVER,
+    port=1433,
+    database=DATABASE,
+    query={
+        "driver": DRIVER,
+        "Encrypt": "no",
+        "TrustServerCertificate": "no",
+        "Connection Timeout": "30"
+    }
 )
+
+# Crear engine de SQLAlchemy
+engine = create_engine(connection_url)
 
 # Tu consulta SQL (usando la lógica final de cálculo de antigüedad)
 SQL_QUERY = """
@@ -72,21 +81,25 @@ SQL_QUERY = """
             """
 
 try:
-    # 2. Conexión y Ejecución
-    with pyodbc.connect(CONNECTION_STRING) as cnxn:
-        # Cargar los resultados directamente en un DataFrame de Pandas
-        df = pd.read_sql(SQL_QUERY, cnxn)
+    # 2. Conexión y Ejecución con SQLAlchemy
+    df = pd.read_sql(SQL_QUERY, engine)
 
-        # 3. Creación del Archivo
-        # Exportar a CSV (muy común para reportes)
-        df.to_csv('reporte_vacaciones_calculadas.csv', index=False, encoding='utf-8')
+    df_with_problems = df[df["Dias_Registrados"] != df["Meses_Total"]]
+    if not df_with_problems.empty:
+        paginar_ansi(df_with_problems, filas_por_pagina=10)
+    else:
+        print("No hay registros con problemas")
 
-        # Si quieres exportar a Excel
-        # df.to_excel('reporte_vacaciones_calculadas.xlsx', index=False)
+    # 3. Creación del Archivo
+    # Exportar a CSV (muy común para reportes)
+    df.to_csv('reporte_vacaciones_calculadas.csv', index=False, encoding='utf-8')
 
-        print("✅ ¡Datos obtenidos y archivo 'reporte_vacaciones_calculadas.csv' creado con éxito!")
+    # Si quieres exportar a Excel
+    # df.to_excel('reporte_vacaciones_calculadas.xlsx', index=False)
 
-except pyodbc.Error as ex:
-    sqlstate = ex.args[0]
-    print(f"❌ Error al conectar o ejecutar SQL: {sqlstate}")
-    print(ex)
+    print("✅ ¡Datos obtenidos y archivo 'reporte_vacaciones_calculadas.csv' creado con éxito!")
+
+except Exception as ex:
+    print(f"❌ Error al conectar o ejecutar SQL: {ex}")
+
+
